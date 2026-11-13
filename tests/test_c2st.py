@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy import stats
 from sklearn.metrics import roc_auc_score
 
 from shiftscan.c2st import auc_score, classifier_test, cross_fitted_scores, stratified_folds
@@ -46,7 +47,9 @@ def test_planted_shift_is_detected(rng):
     result = classifier_test(features, labels, permutations=49, seed=1)
     assert result.auc > 0.8
     assert result.accuracy > 0.7
-    assert result.binomial_p < 1e-6
+    assert result.binomial_n == 40
+    assert result.binomial_correct >= 26
+    assert result.binomial_p < 0.05
     assert result.permutation_p == pytest.approx(1 / 50)
     assert result.null_auc_q95 < result.auc
 
@@ -92,3 +95,29 @@ def test_too_few_records_or_folds_is_an_error(rng):
         classifier_test(features, labels, folds=5)
     with pytest.raises(ValueError):
         classifier_test(features, labels, folds=1)
+
+
+def test_binomial_p_value_is_the_single_split_test(rng):
+    features = rng.normal(size=(100, 3))
+    labels = np.array([0] * 50 + [1] * 50)
+    features[labels == 1, 0] += 1.0
+    result = classifier_test(features, labels, folds=5, permutations=0, seed=4)
+    assert result.binomial_n == 20
+    expected = stats.binomtest(result.binomial_correct, 20, 0.5, alternative="greater").pvalue
+    assert result.binomial_p == pytest.approx(expected)
+    assert result.to_dict()["binomial_correct"] == result.binomial_correct
+
+
+def test_binomial_p_values_do_not_reject_too_often_under_the_null():
+    rng = np.random.default_rng(21)
+    labels = np.array([0] * 40 + [1] * 40)
+    p_values = []
+    for rep in range(400):
+        features = rng.normal(size=(80, 3))
+        result = classifier_test(features, labels, folds=4, permutations=0, seed=rep)
+        p_values.append(result.binomial_p)
+    p_values = np.array(p_values)
+    # 20 held-out records per split: the test is discrete, so it sits at or below the level
+    assert (p_values <= 0.05).mean() <= 0.09
+    assert (p_values <= 0.25).mean() <= 0.32
+    assert (p_values <= 0.6).mean() >= 0.3

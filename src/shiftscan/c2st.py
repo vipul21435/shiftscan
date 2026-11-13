@@ -7,10 +7,12 @@ cut into stratified folds, a logistic regression is fitted on all folds but one
 and scores the fold left out. The pooled held-out accuracy and AUC are the
 effect sizes.
 
-Two p-values are reported. The binomial one treats the held-out predictions as
-independent fair coins under the null; with cross-fitting the folds share
-training data, so it is an approximation. The permutation one repeats the whole
-procedure on shuffled side labels and makes no such assumption.
+Two p-values are reported. The binomial one is the single-split test of the
+paper: it looks at the first fold only, whose records were scored by one model
+trained on the other folds, and refers the number of correct predictions to
+Binomial(n_fold, 1/2). Pooling all folds into one binomial count would ignore
+that the fold models share training data. The permutation one repeats the whole
+cross-fitting on shuffled side labels and uses every record.
 
 The fold models are fitted to a looser tolerance than :func:`fit_logistic` uses
 by default (``FOLD_TOL`` and ``FOLD_FTOL``): the ranking of held-out records
@@ -40,6 +42,8 @@ class ClassifierTest:
     accuracy: float
     auc: float
     binomial_p: float
+    binomial_n: int
+    binomial_correct: int
     permutation_p: float | None
     permutations: int
     null_auc_mean: float | None
@@ -55,6 +59,8 @@ class ClassifierTest:
             "accuracy": self.accuracy,
             "auc": self.auc,
             "binomial_p": self.binomial_p,
+            "binomial_n": self.binomial_n,
+            "binomial_correct": self.binomial_correct,
             "permutation_p": self.permutation_p,
             "permutations": self.permutations,
             "null_auc_mean": self.null_auc_mean,
@@ -84,15 +90,15 @@ def stratified_folds(labels: np.ndarray, folds: int, rng: np.random.Generator) -
     return assignment
 
 
-def cross_fitted_scores(
+def _cross_fit(
     features: Matrix,
     labels: np.ndarray,
     folds: int,
     rng: np.random.Generator,
-    l2: float = 1.0,
-    max_iter: int = 100,
-) -> np.ndarray:
-    """Decision score of every record from the model that did not train on it."""
+    l2: float,
+    max_iter: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Held-out decision scores and the fold number of every record."""
     labels = np.asarray(labels)
     assignment = stratified_folds(labels, folds, rng)
     scores = np.zeros(labels.size)
@@ -103,7 +109,19 @@ def cross_fitted_scores(
             features[train], labels[train], l2=l2, max_iter=max_iter, tol=FOLD_TOL, ftol=FOLD_FTOL
         )
         scores[held_out] = model.decision_function(features[held_out])
-    return scores
+    return scores, assignment
+
+
+def cross_fitted_scores(
+    features: Matrix,
+    labels: np.ndarray,
+    folds: int,
+    rng: np.random.Generator,
+    l2: float = 1.0,
+    max_iter: int = 100,
+) -> np.ndarray:
+    """Decision score of every record from the model that did not train on it."""
+    return _cross_fit(features, labels, folds, rng, l2, max_iter)[0]
 
 
 def classifier_test(
@@ -124,12 +142,14 @@ def classifier_test(
     if folds < 2:
         raise ValueError("folds must be at least 2")
     rng = np.random.default_rng(seed)
-    scores = cross_fitted_scores(features, labels, folds, rng, l2=l2, max_iter=max_iter)
-    predicted = (scores > 0).astype(np.int64)
-    correct = int((predicted == labels).sum())
-    accuracy = correct / labels.size
+    scores, assignment = _cross_fit(features, labels, folds, rng, l2, max_iter)
+    hits = (scores > 0).astype(np.int64) == labels
+    accuracy = int(hits.sum()) / labels.size
     auc = auc_score(labels, scores)
-    binomial_p = float(stats.binom.sf(correct - 1, labels.size, 0.5))
+    first_fold = assignment == 0
+    binomial_n = int(first_fold.sum())
+    binomial_correct = int(hits[first_fold].sum())
+    binomial_p = float(stats.binom.sf(binomial_correct - 1, binomial_n, 0.5))
     permutation_p = null_mean = null_q95 = None
     if permutations > 0:
         null = np.empty(permutations)
@@ -149,6 +169,8 @@ def classifier_test(
         accuracy=float(accuracy),
         auc=auc,
         binomial_p=binomial_p,
+        binomial_n=binomial_n,
+        binomial_correct=binomial_correct,
         permutation_p=permutation_p,
         permutations=permutations,
         null_auc_mean=null_mean,

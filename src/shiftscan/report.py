@@ -41,7 +41,8 @@ def render_tests(tests: dict) -> list[str]:
             "not run"
             if permutation_p is None
             else f"{num(permutation_p)} ({classifier['permutations']} permutations)",
-            f"binomial p {num(classifier['binomial_p'])}",
+            f"binomial p {num(classifier['binomial_p'])} on one fold "
+            f"({classifier['binomial_correct']} of {classifier['binomial_n']} correct)",
         ],
         [
             f"MMD, {mmd['kernel']} kernel on TF-IDF",
