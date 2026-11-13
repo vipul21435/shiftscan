@@ -74,7 +74,10 @@ def _rows_parquet(path: Path) -> list[dict]:
         raise InputError(
             f"{path}: reading Parquet needs pyarrow (pip install 'shiftscan[parquet]')"
         ) from exc
-    return pq.read_table(path).to_pylist()
+    try:
+        return pq.read_table(path).to_pylist()
+    except Exception as exc:  # pyarrow raises its own error types for damaged files
+        raise InputError(f"{path}: cannot read as Parquet ({exc})") from exc
 
 
 def _as_text(value: object) -> str:
@@ -104,16 +107,21 @@ def read_dataset(
     if not path.is_file():
         raise InputError(f"{path}: no such file")
     kind = input_format or _detect_format(path)
-    if kind == "jsonl":
-        rows = _rows_jsonl(path)
-    elif kind == "csv":
-        rows = _rows_csv(path, ",")
-    elif kind == "tsv":
-        rows = _rows_csv(path, "\t")
-    elif kind == "parquet":
-        rows = _rows_parquet(path)
-    else:
-        raise InputError(f"unknown input format {kind!r}")
+    try:
+        if kind == "jsonl":
+            rows = _rows_jsonl(path)
+        elif kind == "csv":
+            rows = _rows_csv(path, ",")
+        elif kind == "tsv":
+            rows = _rows_csv(path, "\t")
+        elif kind == "parquet":
+            rows = _rows_parquet(path)
+        else:
+            raise InputError(f"unknown input format {kind!r}")
+    except UnicodeDecodeError as exc:
+        raise InputError(f"{path}: not valid UTF-8 ({exc.reason} at byte {exc.start})") from exc
+    except csv.Error as exc:
+        raise InputError(f"{path}: cannot read as {kind} ({exc})") from exc
     if not rows:
         raise InputError(f"{path}: no records")
     needed = list(text_fields) + [f for f in (label_field, id_field) if f]

@@ -89,3 +89,23 @@ def test_take_keeps_ids_texts_and_labels_together():
     part = data.take([2, 0], name="part")
     assert (part.name, part.ids) == ("part", ["c", "a"])
     assert (part.texts, part.labels) == (["z", "x"], ["0", "0"])
+
+
+def test_undecodable_and_damaged_files_are_input_errors(tmp_path):
+    latin = tmp_path / "latin.jsonl"
+    latin.write_bytes(b'{"t": "caf\xe9"}\n')
+    with pytest.raises(InputError, match="not valid UTF-8"):
+        read_dataset(latin, ["t"])
+    pytest.importorskip("pyarrow")
+    broken = tmp_path / "broken.parquet"
+    broken.write_bytes(b"this is not a parquet file")
+    with pytest.raises(InputError, match="cannot read as Parquet"):
+        read_dataset(broken, ["t"])
+
+
+def test_csv_rows_with_missing_cells_read_as_empty_text(tmp_path):
+    path = tmp_path / "short.csv"
+    path.write_text("text,label\nfull,a\nonly\n", encoding="utf-8")
+    data = read_dataset(path, ["text"], label_field="label")
+    assert data.texts == ["full", "only"]
+    assert data.labels == ["a", ""]
