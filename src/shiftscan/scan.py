@@ -37,7 +37,7 @@ class Options:
     """Every knob of a run; the command line flags map onto these one to one."""
 
     seed: int = 0
-    max_records: int = 2000
+    max_records: int = 1000
     features: FeatureConfig = field(default_factory=FeatureConfig)
     folds: int = 5
     permutations: int = 100

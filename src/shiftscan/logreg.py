@@ -36,14 +36,20 @@ class LogisticModel:
 
 
 def _loss_and_grad(
-    params: np.ndarray, features: Matrix, signs: np.ndarray, l2: float
+    params: np.ndarray,
+    features: Matrix,
+    signs: np.ndarray,
+    l2: float,
+    transposed: Matrix | None = None,
 ) -> tuple[float, np.ndarray]:
     weights, bias = params[:-1], params[-1]
     margins = signs * (np.asarray(features @ weights).ravel() + bias)
     loss = float(np.logaddexp(0.0, -margins).sum() + 0.5 * l2 * weights @ weights)
     residual = -signs * expit(-margins)
+    if transposed is None:
+        transposed = features.T
     grad = np.empty_like(params)
-    grad[:-1] = np.asarray(features.T @ residual).ravel() + l2 * weights
+    grad[:-1] = np.asarray(transposed @ residual).ravel() + l2 * weights
     grad[-1] = residual.sum()
     return loss, grad
 
@@ -54,8 +60,14 @@ def fit_logistic(
     l2: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-6,
+    ftol: float = 1e-12,
 ) -> LogisticModel:
-    """Fit the model on rows ``features`` with 0/1 ``labels``."""
+    """Fit the model on rows ``features`` with 0/1 ``labels``.
+
+    ``tol`` bounds the largest gradient component at the solution and ``ftol`` the
+    relative decrease of the objective between iterations; L-BFGS stops at
+    whichever is reached first, or after ``max_iter`` iterations.
+    """
     labels = np.asarray(labels)
     if features.shape[0] != labels.shape[0]:
         raise ValueError("features and labels have different numbers of rows")
@@ -65,13 +77,15 @@ def fit_logistic(
         raise ValueError("labels must be 0 or 1")
     signs = 2.0 * labels.astype(np.float64) - 1.0
     start = np.zeros(features.shape[1] + 1)
+    # a row-compressed copy of the transpose makes the gradient product about twice as fast
+    transposed = sparse.csr_matrix(features.T) if sparse.issparse(features) else features.T
     result = optimize.minimize(
         _loss_and_grad,
         start,
-        args=(features, signs, l2),
+        args=(features, signs, l2, transposed),
         jac=True,
         method="L-BFGS-B",
-        options={"maxiter": max_iter, "gtol": tol, "ftol": 1e-12, "maxcor": 10},
+        options={"maxiter": max_iter, "gtol": tol, "ftol": ftol, "maxcor": 10},
     )
     return LogisticModel(
         coef=result.x[:-1].copy(),

@@ -11,6 +11,12 @@ Two p-values are reported. The binomial one treats the held-out predictions as
 independent fair coins under the null; with cross-fitting the folds share
 training data, so it is an approximation. The permutation one repeats the whole
 procedure on shuffled side labels and makes no such assumption.
+
+The fold models are fitted to a looser tolerance than :func:`fit_logistic` uses
+by default (``FOLD_TOL`` and ``FOLD_FTOL``): the ranking of held-out records
+settles long before the weights do, and the null needs hundreds of fits. The
+same settings are used for the observed and the permuted labels, so the
+permutation p-value is valid whatever the tolerance.
 """
 
 from __future__ import annotations
@@ -21,6 +27,9 @@ import numpy as np
 from scipy import stats
 
 from .logreg import Matrix, fit_logistic
+
+FOLD_TOL = 1e-3
+FOLD_FTOL = 1e-7
 
 
 @dataclass
@@ -90,7 +99,9 @@ def cross_fitted_scores(
     for fold in range(folds):
         held_out = assignment == fold
         train = ~held_out
-        model = fit_logistic(features[train], labels[train], l2=l2, max_iter=max_iter)
+        model = fit_logistic(
+            features[train], labels[train], l2=l2, max_iter=max_iter, tol=FOLD_TOL, ftol=FOLD_FTOL
+        )
         scores[held_out] = model.decision_function(features[held_out])
     return scores
 
