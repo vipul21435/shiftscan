@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shiftscan"
+version = "0.1.0"
+description = "Two-sample tests for text datasets: is there a shift, how large against a split-half baseline, and what drives it"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Vipul Raj Jha" }]
+keywords = ["dataset shift", "two-sample test", "text", "evaluation", "mmd"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=14"]
+dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.4", "scikit-learn>=1.3"]
+
+[project.scripts]
+shiftscan = "shiftscan.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/vipul21435/shiftscan"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shiftscan"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
