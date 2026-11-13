@@ -118,6 +118,7 @@ def test_baseline_separates_a_real_shift_from_split_noise(shifted, same_source, 
     assert moved["unigram_jsd"]["ratio"] > 3
     assert moved["classifier_auc"]["excess"] > 0.3
     assert moved["mmd2"]["excess"] > 0
+    assert moved["mmd2"]["ratio"] is None and moved["classifier_auc"]["ratio"] is None
     assert moved["label_total_variation"]["baseline"] >= 0
     still = baseline_section(*same_source, options)
     stats = still["statistics"]

@@ -249,18 +249,26 @@ def features_section(
     }
 
 
-def _summarise(values: dict[str, list[float]]) -> dict:
+# Distances that are positive between any two finite samples: a ratio to the baseline is
+# meaningful for these. MMD2 is centred on zero and AUC on one half, so they get none.
+RATIO_STATISTICS = frozenset(
+    {"unigram_jsd", "length_ks_chars", "length_ks_tokens", "label_total_variation"}
+)
+
+
+def _summarise(name: str, values: dict[str, list[float]]) -> dict:
     cross = float(np.mean(values["cross"]))
     within_a = float(np.mean(values["within_a"]))
     within_b = float(np.mean(values["within_b"]))
     baseline = 0.5 * (within_a + within_b)
+    with_ratio = name in RATIO_STATISTICS and baseline > 0
     return {
         "cross": cross,
         "within_a": within_a,
         "within_b": within_b,
         "baseline": baseline,
         "excess": cross - baseline,
-        "ratio": cross / baseline if baseline > 0 else None,
+        "ratio": cross / baseline if with_ratio else None,
     }
 
 
@@ -273,6 +281,7 @@ def baseline_section(a: Dataset, b: Dataset, options: Options, heavy: bool = Tru
     two parts of one dataset. Sample-size effects (the upward bias of the
     Jensen-Shannon divergence, classifier noise) are the same in all three, so
     ``excess = cross - baseline`` and ``ratio = cross / baseline`` isolate the shift.
+    The ratio is given for the distance-like statistics only (``RATIO_STATISTICS``).
     With ``heavy=False`` the classifier and MMD rows are skipped.
     """
     size = min(len(a) // 2, len(b) // 2, options.max_records)
@@ -340,7 +349,7 @@ def baseline_section(a: Dataset, b: Dataset, options: Options, heavy: bool = Tru
         "records_per_part": size,
         "repeats": options.baseline_repeats,
         "mmd_records_per_side": min(size, options.mmd_records) if run_heavy else None,
-        "statistics": {name: _summarise(values) for name, values in collected.items()},
+        "statistics": {name: _summarise(name, values) for name, values in collected.items()},
     }
 
 
